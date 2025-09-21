@@ -2,6 +2,7 @@ streamlit
 sentence-transformers
 scikit-learn
 numpy
-huggingface-hub
+transformers
+torch
 pdfplumber
 python-pptx
