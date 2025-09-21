@@ -4,6 +4,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import pipeline
+import re
 
 # ------------------ Load embeddings ------------------
 @st.cache_data
@@ -17,7 +18,6 @@ data = load_embeddings("course_embeddings.pkl")
 # ------------------ Embedding model (online) ------------------
 @st.cache_resource
 def load_embedding_model():
-    # Load MiniLM embedding model
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 embed_model = load_embedding_model()
@@ -41,7 +41,7 @@ def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
 def load_generator():
     generator = pipeline(
         "text2text-generation",
-        model="google/flan-t5-small",  # hosted on HF
+        model="google/flan-t5-small",
     )
     return generator
 
@@ -57,6 +57,28 @@ def generate_response(query, chunks):
     else:
         return str(result)
 
+# ------------------ Clean generated answer ------------------
+def remove_links(text):
+    return re.sub(r'http\S+|www\.\S+', '', text)
+
+def remove_names_emails(text):
+    # rough removal: names in format First Last or emails
+    text = re.sub(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', '', text)
+    text = re.sub(r'\S+@\S+', '', text)
+    return text
+
+def truncate_after_last_fullstop(text):
+    if '.' in text:
+        return text.rsplit('.', 1)[0] + '.'
+    return text
+
+def clean_answer(text):
+    text = remove_links(text)
+    text = remove_names_emails(text)
+    text = truncate_after_last_fullstop(text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 # ------------------ Streamlit UI ------------------
 st.title("🤖 University Courses Chatbot")
 
@@ -67,9 +89,10 @@ if st.button("Get Answer") and query:
         top_chunks = retrieve_chunks(query, data, top_k=5)
     with st.spinner("Generating answer..."):
         answer = generate_response(query, top_chunks)
+        cleaned_answer = clean_answer(answer)
     
     st.markdown("**Answer:**")
-    st.write(answer)
+    st.write(cleaned_answer)
 
     # Optional: show source of each chunk
     st.markdown("**Sources of information used:**")
