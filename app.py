@@ -31,7 +31,12 @@ def generate_response(query, chunks):
     context = "\n".join([c["text"] for c in chunks])
     prompt = f"Answer the question based only on the following course content:\n\n{context}\n\nQuestion: {query}\nAnswer:"
     response = inference(prompt)
-    return response
+    # InferenceApi returns a dict with 'generated_text'
+    if isinstance(response, list):
+        return response[0].get("generated_text", "No answer generated.")
+    elif isinstance(response, dict):
+        return response.get("generated_text", "No answer generated.")
+    return str(response)
 
 # ------------------ Streamlit UI ------------------
 st.title("University Courses Chatbot")
