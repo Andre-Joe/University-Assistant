@@ -4,7 +4,6 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from huggingface_hub import InferenceApi
-import os
 
 # ------------------ Load embeddings ------------------
 @st.cache_data
@@ -14,7 +13,7 @@ def load_embeddings(pkl_file="course_embeddings.pkl"):
     return data
 
 data = load_embeddings("course_embeddings.pkl")
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer("all-MiniLM-L6-v2")  # local embedding model
 
 # ------------------ Retrieve top chunks ------------------
 def retrieve_chunks(query, data, top_k=5):
@@ -24,27 +23,26 @@ def retrieve_chunks(query, data, top_k=5):
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
-# ------------------ Generate response ------------------
-HF_TOKEN = st.secrets["HF_TOKEN"]  # Hugging Face token from Streamlit secrets
-inference = InferenceApi(
-    repo_id="google/flan-t5-small",  # free model for online inference
-    token=HF_TOKEN
-)
+# ------------------ Generate response using HF hosted model ------------------
+HF_TOKEN = st.secrets["HF_TOKEN"]
+inference = InferenceApi(repo_id="bigscience/bloomz-560m", token=HF_TOKEN)  # free online model
 
 def generate_response(query, chunks):
     context = "\n".join([c["text"] for c in chunks])
-    prompt = (
-        f"Answer the question based only on the following course content:\n\n"
-        f"{context}\n\nQuestion: {query}\nAnswer:"
-    )
-    result = inference(prompt)
-    # Hugging Face returns dict with 'generated_text'
-    if isinstance(result, dict) and "generated_text" in result:
-        return result["generated_text"]
-    return str(result)
+    prompt = f"Answer the question based only on the following course content:\n\n{context}\n\nQuestion: {query}\nAnswer:"
+    # Call HF hosted API
+    response = inference(prompt)
+    # The API returns a dict with 'generated_text'
+    if isinstance(response, dict) and "generated_text" in response:
+        return response["generated_text"]
+    elif isinstance(response, str):
+        return response
+    else:
+        return str(response)
 
 # ------------------ Streamlit UI ------------------
 st.title("University Courses Chatbot")
+
 query = st.text_input("Ask a question about your courses:")
 
 if st.button("Get Answer") and query:
