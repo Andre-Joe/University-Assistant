@@ -54,7 +54,7 @@ def generate_response(query, chunks):
 # ------------------ Streamlit UI ------------------
 st.title("University Courses Chatbot")
 
-query = st.text_input("Ask a question about your courses:")
+query = st.text_input("Ask a question about AI courses:")
 
 if st.button("Get Answer") and query:
     with st.spinner("Searching for relevant content..."):
