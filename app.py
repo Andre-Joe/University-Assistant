@@ -52,7 +52,7 @@ def generate_response(query, chunks):
         return str(result)
 
 # ------------------ Streamlit UI ------------------
-st.title("🤖University Courses Chatbot")
+st.title("🤖 University Courses Chatbot")
 
 query = st.text_input("Ask a question about AI courses:")
 
