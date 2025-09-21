@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from huggingface_hub import InferenceApi
+from transformers import pipeline
 
 # ------------------ Load embeddings ------------------
 @st.cache_data
@@ -13,9 +13,9 @@ def load_embeddings(pkl_file="course_embeddings.pkl"):
     return data
 
 data = load_embeddings("course_embeddings.pkl")
-model = SentenceTransformer("all-MiniLM-L6-v2")  # local embedding model
+model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# ------------------ Retrieve top chunks ------------------
+# ------------------ Helper: retrieve top chunks ------------------
 def retrieve_chunks(query, data, top_k=5):
     query_emb = model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
@@ -23,22 +23,19 @@ def retrieve_chunks(query, data, top_k=5):
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
-# ------------------ Generate response using HF hosted model ------------------
-HF_TOKEN = st.secrets["HF_TOKEN"]
-inference = InferenceApi(repo_id="bigscience/bloomz-560m", token=HF_TOKEN)  # free online model
+# ------------------ Text2Text Pipeline ------------------
+@st.cache_resource
+def get_pipeline(model_name="google/flan-t5-small"):
+    return pipeline("text2text-generation", model=model_name)
 
+text2text = get_pipeline()
+
+# ------------------ Generate response ------------------
 def generate_response(query, chunks):
     context = "\n".join([c["text"] for c in chunks])
     prompt = f"Answer the question based only on the following course content:\n\n{context}\n\nQuestion: {query}\nAnswer:"
-    # Call HF hosted API
-    response = inference(prompt)
-    # The API returns a dict with 'generated_text'
-    if isinstance(response, dict) and "generated_text" in response:
-        return response["generated_text"]
-    elif isinstance(response, str):
-        return response
-    else:
-        return str(response)
+    result = text2text(prompt, max_length=512, do_sample=False)
+    return result[0]["generated_text"]
 
 # ------------------ Streamlit UI ------------------
 st.title("University Courses Chatbot")
