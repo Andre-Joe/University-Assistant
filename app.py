@@ -23,10 +23,16 @@ def load_embedding_model():
 embed_model = load_embedding_model()
 
 # ------------------ Retrieve top chunks ------------------
-def retrieve_chunks(query, data, top_k=5):
+def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
     query_emb = embed_model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
     sims = cosine_similarity(query_emb, chunk_embs)[0]
+    
+    # Boost full course summaries
+    for i, d in enumerate(data):
+        if d.get("file_name") == "full_course_summary":
+            sims[i] *= full_course_weight
+    
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
@@ -61,5 +67,11 @@ if st.button("Get Answer") and query:
         top_chunks = retrieve_chunks(query, data, top_k=5)
     with st.spinner("Generating answer..."):
         answer = generate_response(query, top_chunks)
+    
     st.markdown("**Answer:**")
     st.write(answer)
+
+    # Optional: show source of each chunk
+    st.markdown("**Sources of information used:**")
+    for i, c in enumerate(top_chunks):
+        st.write(f"- {c['file_name']} (page/slide: {c['page_or_slide']})")
