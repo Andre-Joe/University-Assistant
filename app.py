@@ -24,8 +24,8 @@ def retrieve_chunks(query, data, top_k=5):
     return [data[i] for i in top_indices]
 
 # ------------------ Helper: generate response ------------------
-HF_TOKEN = st.secrets["HF_TOKEN"]  # use secret instead of hardcoding
-inference = InferenceApi(repo_id="google/flan-t5-small", token=HF_TOKEN)  # small free model
+HF_TOKEN = st.secrets["HF_TOKEN"]
+inference = InferenceApi(repo_id="tiiuae/falcon-7b-instruct", token=HF_TOKEN)
 
 def generate_response(query, chunks):
     context = "\n".join([c["text"] for c in chunks])
