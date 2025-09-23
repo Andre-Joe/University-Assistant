@@ -49,13 +49,31 @@ generator = load_generator()
 
 # ------------------ Generate answer ------------------
 def generate_response(query, chunks):
-    context = "\n".join([c["text"] for c in chunks])
-    prompt = f"Answer the question based only on the following course content:\n\n{context}\n\nQuestion: {query}\nAnswer:"
-    result = generator(prompt, max_new_tokens=256)
-    if isinstance(result, list) and "generated_text" in result[0]:
-        return result[0]["generated_text"]
-    else:
-        return str(result)
+    answers = []
+    for c in chunks:
+        prompt = f"Answer the question based only on the following course content:\n\n{c['text']}\n\nQuestion: {query}\nAnswer:"
+        result = generator(prompt, max_new_tokens=256, repetition_penalty=2.0)  # repetition penalty added
+        if isinstance(result, list) and "generated_text" in result[0]:
+            answers.append(result[0]["generated_text"])
+        else:
+            answers.append(str(result))
+    
+    # Combine answers and remove duplicates
+    combined_text = " ".join(answers)
+    seen = set()
+    unique_sentences = []
+    for s in combined_text.split('. '):
+        s_clean = s.strip()
+        if s_clean and s_clean not in seen:
+            unique_sentences.append(s_clean)
+            seen.add(s_clean)
+    final_answer = '. '.join(unique_sentences)
+    
+    # Ensure final full stop
+    if not final_answer.endswith('.'):
+        final_answer += '.'
+        
+    return final_answer
 
 # ------------------ Clean generated answer ------------------
 def remove_links(text):
