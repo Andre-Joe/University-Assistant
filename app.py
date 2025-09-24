@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer
 import re
 
 # ------------------ Load embeddings ------------------
@@ -46,13 +46,34 @@ def load_generator():
     return generator
 
 generator = load_generator()
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
+
+# ------------------ Truncate helper ------------------
+def truncate_to_500_tokens(prompt, tokenizer, max_tokens=500):
+    tokens = tokenizer.encode(prompt)
+    if len(tokens) <= max_tokens:
+        return prompt
+    
+    truncated_text = tokenizer.decode(tokens[:max_tokens], skip_special_tokens=True)
+    last_dot = truncated_text.rfind(".")
+    if last_dot != -1:
+        truncated_text = truncated_text[:last_dot+1]
+    return truncated_text
 
 # ------------------ Generate answer ------------------
 def generate_response(query, chunks):
     answers = []
     for c in chunks:
         prompt = f"Answer the question based only on the following course content:\n\n{c['text']}\n\nQuestion: {query}\nAnswer:"
-        result = generator(prompt, max_new_tokens=256, repetition_penalty=2.0)  # repetition penalty added
+        
+        safe_prompt = truncate_to_500_tokens(prompt, tokenizer, max_tokens=500)
+        
+        result = generator(
+            safe_prompt,
+            max_new_tokens=256,
+            repetition_penalty=2.0
+        )
+        
         if isinstance(result, list) and "generated_text" in result[0]:
             answers.append(result[0]["generated_text"])
         else:
@@ -69,7 +90,6 @@ def generate_response(query, chunks):
             seen.add(s_clean)
     final_answer = '. '.join(unique_sentences)
     
-    # Ensure final full stop
     if not final_answer.endswith('.'):
         final_answer += '.'
         
@@ -80,7 +100,6 @@ def remove_links(text):
     return re.sub(r'http\S+|www\.\S+', '', text)
 
 def remove_names_emails(text):
-    # rough removal: names in format First Last or emails
     text = re.sub(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', '', text)
     text = re.sub(r'\S+@\S+', '', text)
     return text
@@ -112,7 +131,6 @@ if st.button("Get Answer") and query:
     st.markdown("**Answer:**")
     st.write(cleaned_answer)
 
-    # Optional: show source of each chunk
     st.markdown("**Sources of information used:**")
     for i, c in enumerate(top_chunks):
         st.write(f"- {c['file_name']} (page/slide: {c['page_or_slide']})")
