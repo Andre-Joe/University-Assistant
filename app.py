@@ -65,14 +65,15 @@ def generate_response(query, chunks):
     prompt = f"""
 You are a university professor.
 
-If the context is not enough, explain using general knowledge from the course topic.
+Give a DETAILED explanation, not a short answer.
 
-Always give a clear explanation.
+Your answer MUST include:
+- A clear definition
+- A simple explanation in easy words
+- At least one example
+- 4 to 6 sentences minimum
 
-Structure:
-- Definition
-- Explanation
-- Example
+If the context is weak, still explain the concept using your knowledge.
 
 Context:
 {context}
@@ -82,7 +83,6 @@ Question:
 
 Answer:
 """
-
     result = generator(
         prompt,
         max_new_tokens=220,
