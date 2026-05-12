@@ -44,28 +44,30 @@ generator = load_generator()
 # ------------------ Generate response (HARD SAFE LIMITS) ------------------
 def generate_response(query, chunks):
 
-    # HARD LIMIT 1: max chunks
-    chunks = chunks[:2]
+    # keep 3 chunks (not 2)
+    chunks = chunks[:3]
 
-    # HARD LIMIT 2: truncate each chunk aggressively
-    safe_context_parts = []
+    processed_chunks = []
+
     for c in chunks:
         text = c["text"]
 
-        # remove excessive size early
-        text = text[:800]
+        # keep more signal, less aggression
+        text = text[:1200]
 
-        safe_context_parts.append(text)
+        processed_chunks.append(text)
 
-    context = "\n\n".join(safe_context_parts)
+    context = "\n\n".join(processed_chunks)
 
-    # HARD LIMIT 3: total context cap
-    context = context[:2000]
+    # allow slightly larger context but still safe
+    context = context[:3500]
 
     prompt = f"""
-You are a strict university assistant.
+You are a university assistant.
 
-Use ONLY the context below.
+Use the context to give a COMPLETE but concise answer.
+
+If context is insufficient, say so.
 
 Context:
 {context}
@@ -73,12 +75,12 @@ Context:
 Question:
 {query}
 
-Answer clearly and concisely:
+Answer:
 """
 
     result = generator(
         prompt,
-        max_new_tokens=150,
+        max_new_tokens=220,
         do_sample=False
     )
 
