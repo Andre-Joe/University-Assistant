@@ -1,5 +1,9 @@
 streamlit==1.49.1
-sentence-transformers
-scikit-learn
-transformers
-torch
+
+transformers==4.41.0
+torch==2.2.2
+sentencepiece==0.2.0
+
+sentence-transformers==3.0.1
+scikit-learn==1.5.1
+numpy==1.26.4
