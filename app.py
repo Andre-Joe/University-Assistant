@@ -21,17 +21,12 @@ def load_embedding_model():
 
 embed_model = load_embedding_model()
 
-# ------------------ Retrieval ------------------
-def retrieve_chunks(query, data, top_k=3, full_course_weight=1.5):
+# ------------------ Retrieval (STRICT LIMIT) ------------------
+def retrieve_chunks(query, data, top_k=2):
     query_emb = embed_model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
 
     sims = cosine_similarity(query_emb, chunk_embs)[0]
-
-    # boost full summary if exists
-    for i, d in enumerate(data):
-        if d.get("file_name") == "full_course_summary":
-            sims[i] *= full_course_weight
 
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
@@ -46,14 +41,26 @@ def load_generator():
 
 generator = load_generator()
 
-# ------------------ Safe generation ------------------
+# ------------------ Generate response (HARD SAFE LIMITS) ------------------
 def generate_response(query, chunks):
 
-    # HARD LIMIT: prevent token overflow
+    # HARD LIMIT 1: max chunks
     chunks = chunks[:2]
 
-    context = "\n\n".join([c["text"] for c in chunks])
-    context = context[:2000]  # prevents 13k token crash
+    # HARD LIMIT 2: truncate each chunk aggressively
+    safe_context_parts = []
+    for c in chunks:
+        text = c["text"]
+
+        # remove excessive size early
+        text = text[:800]
+
+        safe_context_parts.append(text)
+
+    context = "\n\n".join(safe_context_parts)
+
+    # HARD LIMIT 3: total context cap
+    context = context[:2000]
 
     prompt = f"""
 You are a strict university assistant.
@@ -66,12 +73,12 @@ Context:
 Question:
 {query}
 
-Answer briefly and clearly:
+Answer clearly and concisely:
 """
 
     result = generator(
         prompt,
-        max_new_tokens=200,
+        max_new_tokens=150,
         do_sample=False
     )
 
@@ -88,7 +95,7 @@ def clean_answer(text):
 
     return text
 
-# ------------------ UI ------------------
+# ------------------ Streamlit UI ------------------
 st.title("🤖 University Courses Chatbot")
 
 query = st.text_input("Ask a question about AI courses:")
@@ -96,7 +103,11 @@ query = st.text_input("Ask a question about AI courses:")
 if st.button("Get Answer") and query:
 
     with st.spinner("Retrieving relevant content..."):
-        top_chunks = retrieve_chunks(query, data, top_k=3)
+        top_chunks = retrieve_chunks(query, data, top_k=2)
+
+    # DEBUG (optional but useful)
+    # for c in top_chunks:
+    #     st.write(len(c["text"]))
 
     with st.spinner("Generating answer..."):
         answer = generate_response(query, top_chunks)
