@@ -3,19 +3,18 @@ import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import pipeline, AutoTokenizer
+from transformers import pipeline
 import re
 
 # ------------------ Load embeddings ------------------
 @st.cache_data
 def load_embeddings(pkl_file="course_embeddings.pkl"):
     with open(pkl_file, "rb") as f:
-        data = pickle.load(f)
-    return data
+        return pickle.load(f)
 
 data = load_embeddings("course_embeddings.pkl")
 
-# ------------------ Embedding model (online) ------------------
+# ------------------ Embedding model ------------------
 @st.cache_resource
 def load_embedding_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
@@ -26,111 +25,80 @@ embed_model = load_embedding_model()
 def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
     query_emb = embed_model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
+
     sims = cosine_similarity(query_emb, chunk_embs)[0]
-    
+
     # Boost full course summaries
     for i, d in enumerate(data):
         if d.get("file_name") == "full_course_summary":
             sims[i] *= full_course_weight
-    
+
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
-# ------------------ Hugging Face text generation pipeline ------------------
+# ------------------ Generator (FIXED) ------------------
 @st.cache_resource
 def load_generator():
+    # SAFE: avoids broken task registry issues
     return pipeline(
-        task="text2text-generation",
+        "text2text-generation",
         model="google/flan-t5-small"
     )
-    return generator
 
 generator = load_generator()
-tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small")
 
-# ------------------ Truncate helper ------------------
-def truncate_to_500_tokens(prompt, tokenizer, max_tokens=500):
-    tokens = tokenizer.encode(prompt)
-    if len(tokens) <= max_tokens:
-        return prompt
-    
-    truncated_text = tokenizer.decode(tokens[:max_tokens], skip_special_tokens=True)
-    last_dot = truncated_text.rfind(".")
-    if last_dot != -1:
-        truncated_text = truncated_text[:last_dot+1]
-    return truncated_text
-
-# ------------------ Generate answer ------------------
+# ------------------ Generate response (FIXED RAG) ------------------
 def generate_response(query, chunks):
-    answers = []
-    for c in chunks:
-        prompt = f"Answer the question based only on the following course content:\n\n{c['text']}\n\nQuestion: {query}\nAnswer:"
-        
-        safe_prompt = truncate_to_500_tokens(prompt, tokenizer, max_tokens=500)
-        
-        result = generator(
-            safe_prompt,
-            max_new_tokens=256,
-            repetition_penalty=2.0
-        )
-        
-        if isinstance(result, list) and "generated_text" in result[0]:
-            answers.append(result[0]["generated_text"])
-        else:
-            answers.append(str(result))
-    
-    # Combine answers and remove duplicates
-    combined_text = " ".join(answers)
-    seen = set()
-    unique_sentences = []
-    for s in combined_text.split('. '):
-        s_clean = s.strip()
-        if s_clean and s_clean not in seen:
-            unique_sentences.append(s_clean)
-            seen.add(s_clean)
-    final_answer = '. '.join(unique_sentences)
-    
-    if not final_answer.endswith('.'):
-        final_answer += '.'
-        
-    return final_answer
+    context = "\n\n".join([c["text"] for c in chunks])
 
-# ------------------ Clean generated answer ------------------
-def remove_links(text):
-    return re.sub(r'http\S+|www\.\S+', '', text)
+    prompt = f"""
+Use ONLY the context below to answer the question.
 
-def remove_names_emails(text):
-    text = re.sub(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', '', text)
-    text = re.sub(r'\S+@\S+', '', text)
-    return text
+Context:
+{context}
 
-def truncate_after_last_fullstop(text):
-    if '.' in text:
-        return text.rsplit('.', 1)[0] + '.'
-    return text
+Question: {query}
 
+Answer clearly and concisely:
+"""
+
+    result = generator(
+        prompt,
+        max_new_tokens=256,
+        do_sample=False
+    )
+
+    return result[0]["generated_text"]
+
+# ------------------ Cleaning ------------------
 def clean_answer(text):
-    text = remove_links(text)
-    text = remove_names_emails(text)
-    text = truncate_after_last_fullstop(text)
+    text = re.sub(r'http\S+|www\.\S+', '', text)
+    text = re.sub(r'\S+@\S+', '', text)
+    text = re.sub(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
+
+    if '.' in text:
+        text = text.rsplit('.', 1)[0] + '.'
+
     return text
 
-# ------------------ Streamlit UI ------------------
+# ------------------ UI ------------------
 st.title("🤖 University Courses Chatbot")
 
 query = st.text_input("Ask a question about AI courses:")
 
 if st.button("Get Answer") and query:
-    with st.spinner("Searching for relevant content..."):
+
+    with st.spinner("Searching relevant content..."):
         top_chunks = retrieve_chunks(query, data, top_k=5)
+
     with st.spinner("Generating answer..."):
         answer = generate_response(query, top_chunks)
-        cleaned_answer = clean_answer(answer)
-    
-    st.markdown("**Answer:**")
-    st.write(cleaned_answer)
+        cleaned = clean_answer(answer)
 
-    st.markdown("**Sources of information used:**")
-    for i, c in enumerate(top_chunks):
+    st.markdown("### Answer")
+    st.write(cleaned)
+
+    st.markdown("### Sources")
+    for c in top_chunks:
         st.write(f"- {c['file_name']} (page/slide: {c['page_or_slide']})")
