@@ -63,11 +63,15 @@ def generate_response(query, chunks):
     context = context[:3500]
 
     prompt = f"""
-You are a university assistant.
+You are a university professor explaining clearly.
 
-Use the context to give a COMPLETE but concise answer.
+Explain the concept in a structured way:
 
-If context is insufficient, say so.
+1. Definition
+2. Simple explanation
+3. Example
+
+Use ONLY the context.
 
 Context:
 {context}
@@ -75,7 +79,7 @@ Context:
 Question:
 {query}
 
-Answer:
+Answer in a helpful teaching style:
 """
 
     result = generator(
