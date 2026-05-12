@@ -63,15 +63,16 @@ def generate_response(query, chunks):
     context = context[:3500]
 
     prompt = f"""
-You are a university professor explaining clearly.
+You are a university professor.
 
-Explain the concept in a structured way:
+If the context is not enough, explain using general knowledge from the course topic.
 
-1. Definition
-2. Simple explanation
-3. Example
+Always give a clear explanation.
 
-Use ONLY the context.
+Structure:
+- Definition
+- Explanation
+- Example
 
 Context:
 {context}
@@ -79,7 +80,7 @@ Context:
 Question:
 {query}
 
-Answer in a helpful teaching style:
+Answer:
 """
 
     result = generator(
