@@ -49,18 +49,19 @@ generator = load_generator()
 
 # ------------------ Generate response (SINGLE CALL RAG) ------------------
 def generate_response(query, chunks):
+    # LIMIT CONTEXT SIZE (critical fix)
+    max_chars = 3000
+
     context = "\n\n".join([c["text"] for c in chunks])
+    context = context[:max_chars]
 
     prompt = f"""
-You are a university assistant chatbot.
-
-Use ONLY the context below to answer the question.
+Use ONLY the context below.
 
 Context:
 {context}
 
-Question:
-{query}
+Question: {query}
 
 Answer clearly and concisely:
 """
