@@ -22,7 +22,7 @@ def load_embedding_model():
 embed_model = load_embedding_model()
 
 # ------------------ Retrieval ------------------
-def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
+def retrieve_chunks(query, data, top_k=3, full_course_weight=1.5):
     query_emb = embed_model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
 
@@ -36,10 +36,9 @@ def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
-# ------------------ Generator (FIXED & SAFE) ------------------
+# ------------------ Generator ------------------
 @st.cache_resource
 def load_generator():
-    # IMPORTANT: simplest stable call (no task ambiguity)
     return pipeline(
         "text2text-generation",
         model="google/flan-t5-small"
@@ -47,28 +46,32 @@ def load_generator():
 
 generator = load_generator()
 
-# ------------------ Generate response (SINGLE CALL RAG) ------------------
+# ------------------ Safe generation ------------------
 def generate_response(query, chunks):
-    # LIMIT CONTEXT SIZE (critical fix)
-    max_chars = 3000
+
+    # HARD LIMIT: prevent token overflow
+    chunks = chunks[:2]
 
     context = "\n\n".join([c["text"] for c in chunks])
-    context = context[:max_chars]
+    context = context[:2000]  # prevents 13k token crash
 
     prompt = f"""
+You are a strict university assistant.
+
 Use ONLY the context below.
 
 Context:
 {context}
 
-Question: {query}
+Question:
+{query}
 
-Answer clearly and concisely:
+Answer briefly and clearly:
 """
 
     result = generator(
         prompt,
-        max_new_tokens=256,
+        max_new_tokens=200,
         do_sample=False
     )
 
@@ -80,7 +83,6 @@ def clean_answer(text):
     text = re.sub(r'\S+@\S+', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
 
-    # cut off weird trailing fragments
     if "." in text:
         text = text.rsplit(".", 1)[0] + "."
 
@@ -94,7 +96,7 @@ query = st.text_input("Ask a question about AI courses:")
 if st.button("Get Answer") and query:
 
     with st.spinner("Retrieving relevant content..."):
-        top_chunks = retrieve_chunks(query, data, top_k=5)
+        top_chunks = retrieve_chunks(query, data, top_k=3)
 
     with st.spinner("Generating answer..."):
         answer = generate_response(query, top_chunks)
@@ -103,6 +105,6 @@ if st.button("Get Answer") and query:
     st.markdown("### Answer")
     st.write(cleaned)
 
-    st.markdown("### Sources used")
+    st.markdown("### Sources")
     for c in top_chunks:
         st.write(f"- {c['file_name']} (page/slide: {c['page_or_slide']})")
