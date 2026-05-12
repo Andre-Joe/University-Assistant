@@ -21,14 +21,14 @@ def load_embedding_model():
 
 embed_model = load_embedding_model()
 
-# ------------------ Retrieve top chunks ------------------
+# ------------------ Retrieval ------------------
 def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
     query_emb = embed_model.encode([query])
     chunk_embs = np.array([d["embedding"] for d in data])
 
     sims = cosine_similarity(query_emb, chunk_embs)[0]
 
-    # Boost full course summaries
+    # boost full summary if exists
     for i, d in enumerate(data):
         if d.get("file_name") == "full_course_summary":
             sims[i] *= full_course_weight
@@ -36,10 +36,10 @@ def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
     top_indices = sims.argsort()[-top_k:][::-1]
     return [data[i] for i in top_indices]
 
-# ------------------ Generator (FIXED) ------------------
+# ------------------ Generator (FIXED & SAFE) ------------------
 @st.cache_resource
 def load_generator():
-    # SAFE: avoids broken task registry issues
+    # IMPORTANT: simplest stable call (no task ambiguity)
     return pipeline(
         "text2text-generation",
         model="google/flan-t5-small"
@@ -47,17 +47,20 @@ def load_generator():
 
 generator = load_generator()
 
-# ------------------ Generate response (FIXED RAG) ------------------
+# ------------------ Generate response (SINGLE CALL RAG) ------------------
 def generate_response(query, chunks):
     context = "\n\n".join([c["text"] for c in chunks])
 
     prompt = f"""
+You are a university assistant chatbot.
+
 Use ONLY the context below to answer the question.
 
 Context:
 {context}
 
-Question: {query}
+Question:
+{query}
 
 Answer clearly and concisely:
 """
@@ -74,11 +77,11 @@ Answer clearly and concisely:
 def clean_answer(text):
     text = re.sub(r'http\S+|www\.\S+', '', text)
     text = re.sub(r'\S+@\S+', '', text)
-    text = re.sub(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
 
-    if '.' in text:
-        text = text.rsplit('.', 1)[0] + '.'
+    # cut off weird trailing fragments
+    if "." in text:
+        text = text.rsplit(".", 1)[0] + "."
 
     return text
 
@@ -89,7 +92,7 @@ query = st.text_input("Ask a question about AI courses:")
 
 if st.button("Get Answer") and query:
 
-    with st.spinner("Searching relevant content..."):
+    with st.spinner("Retrieving relevant content..."):
         top_chunks = retrieve_chunks(query, data, top_k=5)
 
     with st.spinner("Generating answer..."):
@@ -99,6 +102,6 @@ if st.button("Get Answer") and query:
     st.markdown("### Answer")
     st.write(cleaned)
 
-    st.markdown("### Sources")
+    st.markdown("### Sources used")
     for c in top_chunks:
         st.write(f"- {c['file_name']} (page/slide: {c['page_or_slide']})")
