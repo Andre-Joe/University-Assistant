@@ -39,9 +39,9 @@ def retrieve_chunks(query, data, top_k=5, full_course_weight=1.5):
 # ------------------ Hugging Face text generation pipeline ------------------
 @st.cache_resource
 def load_generator():
-    generator = pipeline(
-        "text2text-generation",
-        model="google/flan-t5-small",
+    return pipeline(
+        task="text2text-generation",
+        model="google/flan-t5-small"
     )
     return generator
 
